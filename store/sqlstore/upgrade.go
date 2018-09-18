@@ -509,7 +509,30 @@ func UpgradeDatabaseToVersion54(sqlStore SqlStore) {
 
 func UpgradeDatabaseToVersion55(sqlStore SqlStore) {
 	// if shouldPerformUpgrade(sqlStore, VERSION_5_4_0, VERSION_5_5_0) {
+	foreignKeyFailureF := func(msg string) {
+		mlog.Critical(msg)
+		time.Sleep(time.Second)
+		os.Exit(EXIT_GENERIC_FAILURE)
+	}
+
 	sqlStore.CreateIndexIfNotExists("idx_groupmembers_create_at", "GroupMembers", "CreateAt")
 	sqlStore.CreateIndexIfNotExists("idx_groupmembers_delete_at", "GroupMembers", "DeleteAt")
+
+	transaction, err := sqlStore.GetMaster().Begin()
+	if err != nil {
+		foreignKeyFailureF("Failed to begin transaction")
+	}
+
+	if _, err := transaction.Exec("ALTER TABLE GroupMembers ADD FOREIGN KEY (GroupId) REFERENCES Groups(Id)"); err != nil {
+		foreignKeyFailureF("Failed to add foreign key to GroupMembers.GroupId")
+	}
+
+	if _, err := transaction.Exec("ALTER TABLE GroupMembers ADD FOREIGN KEY (UserId) REFERENCES Users(Id)"); err != nil {
+		foreignKeyFailureF("Failed to add foreign key to GroupMembers.GroupId")
+	}
+
+	if err := transaction.Commit(); err != nil {
+		foreignKeyFailureF("Failed to commit transaction")
+	}
 	// }
 }

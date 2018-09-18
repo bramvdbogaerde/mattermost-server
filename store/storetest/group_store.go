@@ -263,22 +263,54 @@ func testGroupStoreDelete(t *testing.T, ss store.Store) {
 }
 
 func testGroupCreateMember(t *testing.T, ss store.Store) {
+	// Create group
+	g1 := &model.Group{
+		Name:        model.NewId(),
+		DisplayName: model.NewId(),
+		Type:        model.GroupTypeLdap,
+	}
+	res1 := <-ss.Group().Save(g1)
+	assert.Nil(t, res1.Err)
+	group := res1.Data.(*model.Group)
+
+	// Create user
+	u1 := &model.User{
+		Email:    MakeEmail(),
+		Username: model.NewId(),
+	}
+	res2 := <-ss.User().Save(u1)
+	assert.Nil(t, res2.Err)
+	user := res2.Data.(*model.User)
+
 	gm1 := &model.GroupMember{
-		GroupId: model.NewId(),
-		UserId:  model.NewId(),
+		GroupId: group.Id,
+		UserId:  user.Id,
 	}
 
 	// Happy path
-	res1 := <-ss.Group().CreateMember(gm1)
-	assert.Nil(t, res1.Err)
-	d1 := res1.Data.(*model.GroupMember)
-	assert.Equal(t, d1.GroupId, gm1.GroupId)
-	assert.Equal(t, d1.UserId, gm1.UserId)
-	assert.NotNil(t, d1.CreateAt)
-	assert.Equal(t, d1.DeleteAt, int64(0))
+	res3 := <-ss.Group().CreateMember(gm1)
+	assert.Nil(t, res3.Err)
+	d2 := res3.Data.(*model.GroupMember)
+	assert.Equal(t, d2.GroupId, gm1.GroupId)
+	assert.Equal(t, d2.UserId, gm1.UserId)
+	assert.NotNil(t, d2.CreateAt)
+	assert.Equal(t, d2.DeleteAt, int64(0))
 
 	// Duplicate composite key (GroupId, UserId)
-	res2 := <-ss.Group().CreateMember(gm1)
-	assert.NotNil(t, res2.Err)
-	assert.Equal(t, res2.Err.Id, "store.sql_group.save_member.exists.app_error")
+	res4 := <-ss.Group().CreateMember(gm1)
+	assert.Equal(t, res4.Err.Id, "store.sql_group.save_member.exists.app_error")
+
+	// Invalid UserId
+	res5 := <-ss.Group().CreateMember(&model.GroupMember{
+		GroupId: group.Id,
+		UserId:  model.NewId(),
+	})
+	assert.Equal(t, res5.Err.Id, "store.sql_group.save_member.save.app_error")
+
+	// Invalid GroupId
+	res6 := <-ss.Group().CreateMember(&model.GroupMember{
+		GroupId: model.NewId(),
+		UserId:  user.Id,
+	})
+	assert.Equal(t, res6.Err.Id, "store.sql_group.save_member.save.app_error")
 }
